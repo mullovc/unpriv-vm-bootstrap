@@ -1,0 +1,44 @@
+#!/bin/bash
+set -euo pipefail
+
+NEWROOT="$1"
+IMAGEBASE="$2"
+PARTSIZE="${PARTSIZE:-10240M}"
+
+SCRIPTDIR="$(dirname "$0")"
+
+#echo $$ > $FIFO
+#cat $FIFO > /dev/null
+
+mount -t tmpfs sandboxroot "${NEWROOT}"
+
+mkdir -m 0755 -p "${NEWROOT}"/{dev,run}
+mkdir -m 1777 -p "${NEWROOT}"/tmp
+mkdir -m 0555 -p "${NEWROOT}"/{sys,proc}
+
+mount -t tmpfs tmp "${NEWROOT}"/tmp
+mount -o rbind,ro,nodev,nousid,noexec /sys "${NEWROOT}"/sys || true
+mount -o rbind,ro,nodev,nousid,noexec /run "${NEWROOT}"/run || true
+
+mount -t tmpfs udev "${NEWROOT}"/dev
+ln -s /proc/self/fd/0 "${NEWROOT}"/dev/stdin
+ln -s /proc/self/fd/1 "${NEWROOT}"/dev/stdout
+ln -s /proc/self/fd/2 "${NEWROOT}"/dev/stderr
+for dev in null full urandom tty
+do
+    touch "${NEWROOT}"/dev/"${dev}"
+    mount --bind /dev/"${dev}" "${NEWROOT}"/dev/"${dev}"
+done
+
+#install_distro "${NEWROOT}"
+. /etc/os-release
+./"$SCRIPTDIR"/dists/"$ID"/main "${NEWROOT}"
+
+# FIXME absolute path
+cp -r baseconfig/* "${NEWROOT}"/
+
+umount -l dev sys proc run tmp
+
+mke2fs -L vmroot -d "${NEWROOT}" "${IMAGEBASE}.ext2" "${PARTSIZE}"
+qemu-img convert -f raw -O qcow2 "${IMAGEBASE}.ext2" "${IMAGEBASE}.qcow2"
+rm -i "${IMAGEBASE}.ext2"
