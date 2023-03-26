@@ -1,0 +1,31 @@
+#!/bin/bash
+set -eu
+
+SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
+config="${SCRIPT_DIR}/initcpio/mkinitcpio.conf"
+
+kernel_out="$1"
+initrd_out="$2"
+modulesimage_out="$3"
+
+modulessize="512M"
+
+kernel="/boot/vmlinuz-linux"
+#source /usr/lib/initcpio/functions
+kernelversion="$(kver "$kernel")"
+
+
+#unshare -r mkinitcpio \
+unshare --map-auto --map-root-user mkinitcpio \
+    -g "${initrd_out}" \
+    -k "${kernelversion}" \
+    -c "${config}" \
+    -D "${SCRIPT_DIR}/initcpio" -D "/etc/initcpio" -D "/usr/lib/initcpio"
+
+mke2fs \
+    -L "kernel_modules" \
+    -d "/usr/lib/modules/${kernelversion}" \
+    "${modulesimage_out}" \
+    "${modulessize}"
+
+cp -i "$kernel" "$kernel_out"
